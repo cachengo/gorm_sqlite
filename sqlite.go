@@ -1,7 +1,6 @@
 package sqlite
 
 import (
-	"context"
 	"database/sql"
 	"strconv"
 	"strings"
@@ -49,9 +48,10 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 	}
 
 	var version string
-	if err := db.ConnPool.QueryRowContext(context.Background(), "select sqlite_version()").Scan(&version); err != nil {
+	/*if err := db.ConnPool.QueryRowContext(context.Background(), "select sqlite_version()").Scan(&version); err != nil {
 		return err
-	}
+	}*/
+	version = "3.27.2"
 	// https://www.sqlite.org/releaselog/3_35_0.html
 	if compareVersion(version, "3.35.0") >= 0 {
 		callbacks.RegisterDefaultCallbacks(db, &callbacks.Config{
