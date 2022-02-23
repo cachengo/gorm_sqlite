@@ -1,13 +1,15 @@
 package sqlite
 
 import (
+	"crypto/ecdsa"
 	"database/sql"
+	"errors"
 	"strconv"
 	"strings"
 
 	"gorm.io/gorm/callbacks"
 
-	_ "github.com/cachengo/go-aergolite"
+	aergolite "github.com/cachengo/go-aergolite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/gorm/logger"
@@ -18,10 +20,13 @@ import (
 // DriverName is the default driver name for SQLite.
 const DriverName = "sqlite3"
 
+var PrivateKey ecdsa.PrivateKey = ecdsa.PrivateKey{}
+
 type Dialector struct {
 	DriverName string
 	DSN        string
 	Conn       gorm.ConnPool
+	PrivateKey ecdsa.PrivateKey
 }
 
 func Open(dsn string) gorm.Dialector {
@@ -29,10 +34,34 @@ func Open(dsn string) gorm.Dialector {
 }
 
 func (dialector Dialector) Name() string {
-	return "sqlite"
+	return "sqlite_custom"
 }
 
 func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
+
+	emptyKey := ecdsa.PrivateKey{}
+
+	if PrivateKey == emptyKey {
+		return errors.New("Must set private key first")
+	}
+
+	dialector.PrivateKey = PrivateKey
+	PrivateKey = ecdsa.PrivateKey{}
+
+	sql.Register("sqlite3_custom", &aergolite.SQLiteDriver{
+		ConnectHook: func(conn *aergolite.SQLiteConn) error {
+			if err := conn.RegisterFunc("on_sign_transaction", on_sign_transaction, true); err != nil {
+				return err
+			}
+			if err := conn.RegisterFunc("transaction_notification", on_transaction, true); err != nil {
+				return err
+			}
+			if err := conn.RegisterFunc("update_notification", on_update, true); err != nil {
+				return err
+			}
+			return nil
+		},
+	})
 	if dialector.DriverName == "" {
 		dialector.DriverName = DriverName
 	}
@@ -40,6 +69,7 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 	if dialector.Conn != nil {
 		db.ConnPool = dialector.Conn
 	} else {
+
 		conn, err := sql.Open(dialector.DriverName, dialector.DSN)
 		if err != nil {
 			return err
@@ -215,4 +245,21 @@ func compareVersion(version1, version2 string) int {
 		}
 	}
 	return 0
+}
+
+// Signing a transaction from the blockchain admin
+func on_sign_transaction(data string) string {
+	//signature = sign(data, privkey)
+	//return hex.EncodeToString(pubkey) + ":" + hex.EncodeToString(signature)
+	return ""
+}
+
+// Receiving a notification of a processed transaction
+func on_transaction(nonce uint64, status string) {
+	println("transaction " + strconv.FormatUint(nonce, 10) + ": " + status)
+}
+
+// Receiving notification of local db update
+func on_update() {
+	println("event: the db was updated")
 }
